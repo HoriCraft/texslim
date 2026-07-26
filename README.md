@@ -31,6 +31,24 @@ Excellent ランクを狙うためのものではなく、「重すぎるアバ�
 **日本語／英語を切り替えられます。**
 ヘッダー右上のボタンでいつでも切り替わります。
 
+## 導入
+
+[配布ページ](https://horicraft.github.io/vpm/)を開いて **「VCC に追加する」** ボタンを押してください。
+VCC が起動して確認画面が出るので、そのまま追加します。**URL のコピペは不要です。**
+
+そのあと、プロジェクトの **Manage Project** で TexSlim の `+` を押せば導入完了です。
+
+<details>
+<summary>ボタンが効かないとき（手動で追加する）</summary>
+
+VCC の **Settings → Packages → Add Repository** に、次の URL を貼り付けてください。
+
+```
+https://horicraft.github.io/vpm/index.json
+```
+
+</details>
+
 ## 使い方
 
 1. Hierarchy でアバターのルートを右クリック
