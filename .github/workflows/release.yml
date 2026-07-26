@@ -1,0 +1,66 @@
+# タグを打つとリリース zip を作って GitHub Release に添付する。
+# 第三者アクションは使わず、標準アクションと gh CLI だけで完結させている
+# （外部アクションはバージョンが上がると壊れやすく、リリース経路に依存を増やしたくないため）。
+name: Build Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: package.json からパッケージ名とバージョンを読む
+        id: pkg
+        run: |
+          NAME=$(jq -r .name package.json)
+          VERSION=$(jq -r .version package.json)
+          echo "name=$NAME"       >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip=$NAME-$VERSION.zip" >> "$GITHUB_OUTPUT"
+
+      - name: タグと package.json のバージョンが一致しているか確認
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="${{ steps.pkg.outputs.version }}"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::タグ ($TAG_VERSION) と package.json ($PKG_VERSION) のバージョンが違います。"
+            exit 1
+          fi
+
+      # zip の中身はパッケージのルート（package.json が最上位）でなければならない。
+      # VCC はこれをそのまま Packages/<name>/ へ展開する。
+      - name: zip を作る
+        run: |
+          zip -r "${{ steps.pkg.outputs.zip }}" . \
+            -x ".git/*" ".github/*" ".agents/*" ".gitignore" "*.zip"
+
+      - name: SHA256 を出す
+        id: hash
+        run: echo "sha256=$(sha256sum '${{ steps.pkg.outputs.zip }}' | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Release を作って添付する
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "${{ steps.pkg.outputs.zip }}" \
+            --title "${{ steps.pkg.outputs.version }}" \
+            --notes "SHA256: ${{ steps.hash.outputs.sha256 }}" \
+            --verify-tag || \
+          gh release upload "${GITHUB_REF_NAME}" "${{ steps.pkg.outputs.zip }}" --clobber
+
+      - name: 次にすることを表示する
+        run: |
+          echo "リリースを作成しました。"
+          echo "VCC に反映するには HoriCraft/vpm の Build VPM Listing を実行してください"
+          echo "（毎日の定期実行でも拾われます）。"

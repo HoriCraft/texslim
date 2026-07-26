@@ -1,0 +1,20 @@
+{
+  "name": "HoriCraft.TexSlim.Runtime",
+  "rootNamespace": "HoriCraft.TexSlim",
+  "references": [],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [
+    {
+      "name": "com.vrchat.base",
+      "expression": "",
+      "define": "TEXSLIM_HAS_VRCSDK"
+    }
+  ],
+  "noEngineReferences": false
+}

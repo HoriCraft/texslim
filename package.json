@@ -1,0 +1,25 @@
+{
+  "name": "com.horicraft.texslim",
+  "displayName": "TexSlim",
+  "version": "1.0.0",
+  "unity": "2022.3",
+  "description": "TexSlim（テックスリム）— アバターのテクスチャを非破壊で軽くする Unity エディタ拡張。元の画像ファイルには手を触れず、インポート設定だけを変えるので、いつでも完全に元へ戻せます。 / Shrinks VRChat avatar textures without touching the source images. Only import settings are changed, so everything can be restored exactly.",
+  "author": {
+    "name": "HoriCraft"
+  },
+  "url": "https://github.com/HoriCraft/texslim",
+  "repo": "https://horicraft.github.io/vpm/index.json",
+  "license": "MIT",
+  "documentationUrl": "https://github.com/HoriCraft/texslim#readme",
+  "changelogUrl": "https://github.com/HoriCraft/texslim/blob/main/CHANGELOG.md",
+  "keywords": [
+    "vrchat",
+    "avatar",
+    "texture",
+    "optimization",
+    "crunch"
+  ],
+  "legacyFolders": {
+    "Assets\\HoriCraft\\VRC Easy Texture Compressor": ""
+  }
+}
