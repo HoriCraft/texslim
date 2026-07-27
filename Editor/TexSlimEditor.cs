@@ -62,6 +62,11 @@ namespace HoriCraft.TexSlim.Editor
         // ツールチップ変化検出用（変化時にRepaint()を呼ぶ）
         private string                  lastTooltip = string.Empty;
 
+        // ツールチップバーの固定高さ。3行ぶん（説明文の最長。例: Crunch品質）＋余白。
+        // 可変高さにすると発振する（OnInspectorGUI のコメント参照）。
+        // 4行以上の説明を書くときはここも広げること（末尾が切れて表示される）。
+        private const float TooltipBarHeight = 50f;
+
         // アコーディオン展開状態
         private readonly HashSet<string> expandedObjects   = new HashSet<string>();
         private readonly HashSet<string> expandedMaterials = new HashSet<string>();
@@ -126,11 +131,18 @@ namespace HoriCraft.TexSlim.Editor
             // 最下部に置くと、内容が縦に長くてスクロールで隠れたときに説明が読めない。
             // 上に置く都合で表示するのは「前フレームの GUI.tooltip」になるが、
             // MouseMove とツールチップ変化時に Repaint しているので体感は即時。
+            //
+            // 高さは必ず固定にすること（EditorGUILayout.HelpBox は使わない）。
+            // HelpBox は行数で高さが変わるため、ホバーで説明が出た瞬間に下の UI 全体が
+            // 押し下げられ、カーソルの下から要素が外れる → ツールチップが消えて縮む →
+            // 要素が戻ってまた説明が出る…という発振が起きる。
+            // 実害として「UI が上下に小刻みに揺れる」「揺れてボタンが押せない」が出ていた。
             string tip = string.IsNullOrEmpty(lastTooltip)
                 ? L.T("ボタンにマウスを乗せると説明が表示されます",
                       "Hover over a button to see its description")
                 : lastTooltip;
-            EditorGUILayout.HelpBox(tip, MessageType.None);
+            Rect tipRect = GUILayoutUtility.GetRect(0f, TooltipBarHeight, GUILayout.ExpandWidth(true));
+            GUI.Label(tipRect, tip, EditorStyles.helpBox);
             EditorGUILayout.Space(6f);
 
             if      (component.ActiveTab == 0) DrawEasyMode();

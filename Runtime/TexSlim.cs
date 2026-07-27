@@ -26,7 +26,7 @@ namespace HoriCraft.TexSlim
         , VRC.SDKBase.IEditorOnly
 #endif
     {
-        public const string ToolVersion = "1.1.0";
+        public const string ToolVersion = "1.1.1";
 
         /// <summary>設定データのスキーマ版。旧データのマイグレーション判定に使う。</summary>
         public const int CurrentSettingsVersion = 1;
