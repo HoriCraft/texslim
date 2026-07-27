@@ -49,6 +49,39 @@ namespace HoriCraft.TexSlim.Editor
                 "OK");
         }
 
+        /// <summary>
+        /// 非圧縮フォーマット（圧縮形式 None）のテクスチャをまとめて Compressed に直す。
+        /// 解像度や Crunch には触れない。台帳に控えるので通常の復元で戻せる。
+        /// </summary>
+        private void RunFixUncompressed()
+        {
+            RefreshScan();
+            List<AvatarTextureNode> targets = scan?.CollectUncompressedFixable();
+            if (targets == null || targets.Count == 0) return;
+
+            CompressionResult result =
+                TextureCompressionProcessor.FixUncompressedFormats(component, targets);
+            RefreshScan();
+
+            foreach (string w in result.Warnings)
+                Debug.LogWarning($"[TexSlim] {w}", component);
+
+            EditorUtility.DisplayDialog(
+                "TexSlim",
+                L.F("{0} 枚の圧縮形式を None から Compressed に変えました。\n"
+                    + "テクスチャメモリ: {1} → {2}\n\n"
+                    + "解像度と画像ファイルには手を加えていません。\n"
+                    + "[↩ 元に戻す] でいつでも取り消せます。",
+                    "Changed the compression of {0} textures from None to Compressed.\n"
+                    + "Texture memory: {1} → {2}\n\n"
+                    + "Resolutions and source images are untouched.\n"
+                    + "[↩ Restore] undoes this at any time.",
+                    result.TextureCount,
+                    TextureSizeUtil.BytesToLabel(result.OriginalVramBytes),
+                    TextureSizeUtil.BytesToLabel(result.CompressedVramBytes)),
+                "OK");
+        }
+
         /// <summary>テクスチャ1枚だけを圧縮する（インポート設定を変更）。</summary>
         private void RunSingleCompress(AvatarTextureNode texNode)
         {

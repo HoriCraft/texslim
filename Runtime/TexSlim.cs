@@ -26,7 +26,7 @@ namespace HoriCraft.TexSlim
         , VRC.SDKBase.IEditorOnly
 #endif
     {
-        public const string ToolVersion = "1.0.0";
+        public const string ToolVersion = "1.1.0";
 
         /// <summary>設定データのスキーマ版。旧データのマイグレーション判定に使う。</summary>
         public const int CurrentSettingsVersion = 1;
@@ -44,25 +44,35 @@ namespace HoriCraft.TexSlim
         /// <summary>圧縮モードの定義</summary>
         public enum CompressionMode
         {
-            /// <summary>解像度ダウン + Crunch圧縮の両方を適用（デフォルト）</summary>
+            // 数値は変えないこと。既存シーンに保存済みの値と対応している。
+            /// <summary>解像度ダウン + Crunch圧縮の両方を適用</summary>
             Both            = 0,
             /// <summary>解像度はそのまま、Crunch圧縮形式だけ変更</summary>
             CrunchOnly      = 1,
-            /// <summary>解像度を下げるが、圧縮形式は変更しない</summary>
+            /// <summary>解像度を下げるが、圧縮形式は変更しない（デフォルト）</summary>
             ResolutionOnly  = 2,
         }
 
         // 初期値は 1024。2048 だと元から 2048 以下のテクスチャが1枚も縮まず、
         // 「押しても大して変わらない」という第一印象になりやすい。
         // 1024 はアバター軽量化で常用される値で、実測でも
-        // ダウンロードサイズ -40% / テクスチャメモリ -50% と体感できる差が出た。
+        // ダウンロードサイズ -38% / テクスチャメモリ -50% と体感できる差が出た。
         [SerializeField] private int maxTextureSize = 1024;
         [SerializeField] private bool preserveFaceAndEyes = true;
         [SerializeField] private bool protectHair          = true;   // 髪カテゴリ保護
         [SerializeField] private int activeTab;
         [SerializeField] private bool isCompressed;
         [SerializeField] private string lastCompressionUtc;
-        [SerializeField] private CompressionMode compressionMode   = CompressionMode.Both;
+        // 初期値は ResolutionOnly。
+        // 実測（作者のアバター / 最大サイズ 1024）では、解像度を下げたうえで
+        // さらに Crunch をかけても、ダウンロードサイズは 33.42MB → 32.12MB
+        // （1.30MB・3.9%）しか変わらず、テクスチャメモリは 80.66MB で完全に同じだった。
+        // 1024 まで落とすと元データが小さく、アセットバンドルの圧縮が
+        // ほとんど取り切ってしまうため、Crunch の出番が残らない。
+        // その 1.3MB のために全テクスチャへ二重の非可逆圧縮と
+        // 読み込み時の CPU 展開を課すのは割に合わない。
+        // なお既存シーンには値が保存済みなので、この変更が効くのは新規追加分だけ。
+        [SerializeField] private CompressionMode compressionMode   = CompressionMode.ResolutionOnly;
         [SerializeField] private int  compressionQuality           = 75;
         // 旧データは 0（フィールド未保存）のままデシリアライズされるため、
         // Reset() を通った新規コンポーネントとマイグレーション対象を区別できる。

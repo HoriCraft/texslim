@@ -852,6 +852,22 @@ namespace HoriCraft.TexSlim.Editor
                 TexSlimStyles.RowName(11, TextureSizeColor(texNode, canToggle, curInclude)));
             GUILayout.Space(6f);
             GUILayout.Label(BuildTextureMetaText(texNode), TexSlimStyles.StatusLabelStyle);
+
+            // 非圧縮フォーマットの行には警告を添える。修正はかんたんタブの診断からまとめて行う。
+            if (texNode.OriginalInfo != null && texNode.OriginalInfo.IsUncompressedFormat
+                && texNode.IsProjectAsset && texNode.IsTexture2D)
+            {
+                GUILayout.Space(6f);
+                GUILayout.Label(
+                    new GUIContent(
+                        L.T("非圧縮", "Uncompressed"),
+                        L.T("圧縮形式が None のため、同じ解像度の圧縮済みテクスチャの約4倍の VRAM を使います。\n"
+                            + "かんたんタブの「非圧縮フォーマットを直す」でまとめて修正できます。",
+                            "Compression format is None, so this uses about 4x the VRAM of a compressed\n"
+                            + "texture at the same resolution. Fix it from the Easy tab.")),
+                    TexSlimStyles.TintedStatus(TexSlimStyles.WarnColor, bold: true));
+            }
+
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
@@ -993,7 +1009,12 @@ namespace HoriCraft.TexSlim.Editor
             TextureAssetInfo cur = texNode.OriginalInfo;  // OriginalInfo はスキャン時点＝現在の状態
             if (cur == null) return string.Empty;
 
+            // 解像度に VRAM の実量を併記する。
+            // 「大きい順」で順位は分かっても量が分からないと、
+            // 「あと何枚潰せば目標に届くか」の逆算ができないため。
             string size = $"{cur.Width}×{cur.Height}";
+            if (cur.RuntimeBytes > 0)
+                size += " " + TextureSizeUtil.BytesToLabel(cur.RuntimeBytes);
 
             // 圧縮済み：現在サイズ（＝圧縮後）に、元の最大サイズが分かれば併記する
             if (texNode.CompressedByTool)
@@ -1013,7 +1034,13 @@ namespace HoriCraft.TexSlim.Editor
                     component.GetEffectiveMaxSize(texNode.Texture),
                     out int predW, out int predH);
                 if (predW != cur.Width || predH != cur.Height)
-                    return $"{size} → {predW}×{predH}";
+                {
+                    string predicted = $"{predW}×{predH}";
+                    long predictedBytes = scan != null ? scan.EstimateCompressedVram(texNode) : 0L;
+                    if (predictedBytes > 0)
+                        predicted += " " + TextureSizeUtil.BytesToLabel(predictedBytes);
+                    return $"{size} → {predicted}";
+                }
             }
 
             return size;

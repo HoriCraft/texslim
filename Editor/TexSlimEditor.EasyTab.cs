@@ -153,18 +153,75 @@ namespace HoriCraft.TexSlim.Editor
                         + "than this, so compare against \"Uncompressed Size\" in the avatar info instead."),
                     MessageType.None);
 
-                if (component.Mode == TexSlimComponent.CompressionMode.CrunchOnly)
+                // Crunch は「読み込み時に CPU で DXT へ展開される」形式であって、
+                // GPU 上で圧縮されたまま使われるわけではない。
+                // したがって VRAM 上のサイズは非 Crunch と1バイトも変わらない
+                // （実測でも両モードとも 80.66MB で完全一致した）。
+                if (component.Mode == TexSlimComponent.CompressionMode.CrunchOnly
+                    || component.Mode == TexSlimComponent.CompressionMode.Both)
                 {
                     EditorGUILayout.HelpBox(
-                        L.T("Crunch はゲーム中に展開されるため、テクスチャメモリ（VRAM）は減りません。\n"
-                            + "減るのはアバターのダウンロードサイズのほうです。",
-                            "Crunch is decompressed on the GPU, so VRAM does not change.\n"
-                            + "What it reduces is the avatar download size."),
+                        L.T("Crunch はアバターの読み込み時に CPU で展開されるため、\n"
+                            + "テクスチャメモリ（VRAM）は減りません。減るのはダウンロードサイズだけです。\n"
+                            + "そのぶん画質は下がり、読み込み時に一瞬のひっかかりが出ることがあります。",
+                            "Crunch is decompressed on the CPU while the avatar loads, so texture memory\n"
+                            + "(VRAM) does not change. Only the download size drops.\n"
+                            + "In exchange you lose some quality and may get a brief hitch on load."),
                         MessageType.None);
                 }
+
+                DrawUncompressedFormatWarning();
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        /// <summary>
+        /// 非圧縮フォーマットの警告と修正ボタン。
+        /// 解像度をいくら下げても、圧縮形式が None のままだと VRAM は約4倍のまま。
+        /// 初心者には完全に不可視の問題なので、診断としてここで拾う。
+        /// </summary>
+        private void DrawUncompressedFormatWarning()
+        {
+            if (scan == null || scan.UncompressedFixableCount == 0)
+            {
+                // 修正対象は無いが、保護・除外の中に非圧縮が残っている場合だけ一言添える。
+                // （黙っていると「直したのに数字が大きいまま」の原因が分からない）
+                if (scan != null && scan.UncompressedSkippedCount > 0)
+                {
+                    EditorGUILayout.HelpBox(
+                        L.F("保護・除外中のテクスチャに、圧縮形式が None のものが {0} 枚あります。\n"
+                            + "これらは指定どおり、そのままにしています。",
+                            "{0} protected/excluded textures still use compression format None.\n"
+                            + "They are left alone, as you asked."),
+                        MessageType.None);
+                }
+                return;
+            }
+
+            EditorGUILayout.HelpBox(
+                L.F("{0} 枚の圧縮形式が None（非圧縮）のままです。\n"
+                    + "同じ解像度でも、圧縮済みテクスチャの約4倍の VRAM を使います。\n"
+                    + "直すと約 {1} 減る見込みです。",
+                    "{0} textures still use compression format None (uncompressed).\n"
+                    + "At the same resolution they take about 4x the VRAM of a compressed texture.\n"
+                    + "Fixing them should save about {1}.",
+                    scan.UncompressedFixableCount,
+                    TextureSizeUtil.BytesToLabel(scan.UncompressedFixSavings)),
+                MessageType.Warning);
+
+            if (TexSlimStyles.ColoredButton(
+                    new GUIContent(
+                        L.T("非圧縮フォーマットを直す", "Fix uncompressed formats"),
+                        L.T("圧縮形式を None から Compressed に変えます。解像度は変えません。\n"
+                            + "元の画像ファイルはそのままなので、[↩ 元に戻す] でいつでも取り消せます。",
+                            "Changes the compression format from None to Compressed. Resolutions stay.\n"
+                            + "Source images are untouched; [↩ Restore] undoes it at any time.")),
+                    TexSlimStyles.PrimaryColor,
+                    TexSlimStyles.SmallColoredBtnStyle))
+            {
+                RunFixUncompressed();
+            }
         }
 
         // ─── ② アクション（実行ボタン） ──────────────────────────────
@@ -260,40 +317,40 @@ namespace HoriCraft.TexSlim.Editor
 
             switch (component.Mode)
             {
+                case TexSlimComponent.CompressionMode.ResolutionOnly:
+                    EditorGUILayout.HelpBox(
+                        L.T("解像度のみ（おすすめ）\n"
+                            + "「最大サイズ」より大きいテクスチャを小さくします。保存形式は変えません。\n"
+                            + "テクスチャメモリとダウンロードサイズの両方が減り、画質の劣化も1回で済みます。\n"
+                            + "顔や髪など大事なテクスチャは、下の「テクスチャ保護」で自動的に守られます。",
+                            "Resolution only (recommended)\n"
+                            + "Shrinks textures larger than Max Size. The storage format is left alone.\n"
+                            + "Both texture memory and download size drop, with only one pass of quality loss.\n"
+                            + "Important textures like face and hair are kept safe by Texture Protection below."),
+                        MessageType.None);
+                    break;
                 case TexSlimComponent.CompressionMode.Both:
                     EditorGUILayout.HelpBox(
-                        L.T("解像度＋Crunch（おすすめ）\n"
-                            + "テクスチャを「最大サイズ」まで小さくしたうえで、Crunch圧縮もかけます。\n"
-                            + "いちばん軽くなりますが、そのぶん画質は下がります。\n"
-                            + "顔や髪など大事なテクスチャは、下の「テクスチャ保護」で自動的に守られます。",
-                            "Resolution + Crunch (recommended)\n"
-                            + "Shrinks textures down to Max Size, then applies Crunch compression.\n"
-                            + "Saves the most, at some cost to image quality.\n"
-                            + "Important textures like face and hair are kept safe by Texture Protection below."),
+                        L.T("解像度＋Crunch\n"
+                            + "小さくしたうえで、さらに Crunch 圧縮もかけます。\n"
+                            + "ダウンロードサイズはもう少しだけ減りますが、実測では 1MB 程度の差でした。\n"
+                            + "テクスチャメモリは「解像度のみ」と変わりません。",
+                            "Resolution + Crunch\n"
+                            + "Shrinks textures, then applies Crunch compression on top.\n"
+                            + "Download size drops a little further - about 1MB in our measurement.\n"
+                            + "Texture memory is the same as Resolution only."),
                         MessageType.None);
                     break;
                 case TexSlimComponent.CompressionMode.CrunchOnly:
                     EditorGUILayout.HelpBox(
-                        L.T("Crunchのみ（画質そのまま寄り）\n"
+                        L.T("Crunchのみ（解像度を保ちたいとき）\n"
                             + "解像度は変えず、テクスチャの保存形式だけを Crunch に変えます。\n"
-                            + "見た目の変化がとても小さく、失敗しにくい方法です。\n"
-                            + "ダウンロードサイズは減りますが、テクスチャメモリ（VRAM）は減りません。",
-                            "Crunch only (safest for looks)\n"
+                            + "解像度を下げるよりは変化が小さいものの、無劣化ではありません。\n"
+                            + "テクスチャメモリ（VRAM）は減らないので、軽量化が目的なら他の2つを使ってください。",
+                            "Crunch only (when you want to keep the resolution)\n"
                             + "Keeps resolution and only changes the storage format to Crunch.\n"
-                            + "Barely changes how it looks, and is hard to get wrong.\n"
-                            + "Reduces download size, but texture memory (VRAM) stays the same."),
-                        MessageType.None);
-                    break;
-                case TexSlimComponent.CompressionMode.ResolutionOnly:
-                    EditorGUILayout.HelpBox(
-                        L.T("解像度のみ（特殊なとき用）\n"
-                            + "「最大サイズ」より大きいテクスチャを小さくしますが、保存形式は変えません。\n"
-                            + "Crunch に対応していない特殊なシェーダー向けです。\n"
-                            + "ダウンロードサイズはあまり減りません。ふだんは「解像度＋Crunch」を使ってください。",
-                            "Resolution only (for special cases)\n"
-                            + "Shrinks textures larger than Max Size, but leaves the storage format alone.\n"
-                            + "For unusual shaders that do not work with Crunch.\n"
-                            + "Download size barely drops. Normally use Resolution + Crunch instead."),
+                            + "It changes less than shrinking does, but it is not lossless.\n"
+                            + "Texture memory (VRAM) does not drop, so use one of the other two to save weight."),
                         MessageType.Warning);
                     break;
             }
@@ -351,14 +408,14 @@ namespace HoriCraft.TexSlim.Editor
                     what = L.T("解像度はそのままで、Crunch圧縮をかけます",
                                "keep the resolution and apply Crunch compression");
                     break;
-                case TexSlimComponent.CompressionMode.ResolutionOnly:
-                    what = L.F("テクスチャを {0}px 以下まで小さくします（Crunchはかけません）",
-                               "shrink textures to {0}px or smaller (no Crunch)", component.MaxTextureSize);
-                    break;
-                default:
+                case TexSlimComponent.CompressionMode.Both:
                     what = L.F("テクスチャを {0}px 以下まで小さくして、Crunch圧縮もかけます",
                                "shrink textures to {0}px or smaller and apply Crunch compression",
                                component.MaxTextureSize);
+                    break;
+                default:   // ResolutionOnly（既定）
+                    what = L.F("テクスチャを {0}px 以下まで小さくします",
+                               "shrink textures to {0}px or smaller", component.MaxTextureSize);
                     break;
             }
 
@@ -380,18 +437,20 @@ namespace HoriCraft.TexSlim.Editor
         {
             var modes = new[]
             {
-                (mode: TexSlimComponent.CompressionMode.Both,
-                 label: L.T("解像度＋Crunch", "Resolution + Crunch"),
-                 tip:   L.T("解像度を下げたうえで Crunch 圧縮もかけます。いちばん軽くなります",
-                            "Shrinks the resolution and applies Crunch. Saves the most")),
-                (mode: TexSlimComponent.CompressionMode.CrunchOnly,
-                 label: L.T("Crunchのみ", "Crunch only"),
-                 tip:   L.T("解像度はそのまま。見た目の変化がいちばん小さい方法です",
-                            "Keeps the resolution. The gentlest option for image quality")),
+                // 並びは「解像度を下げる → 下げて更に Crunch → Crunch だけ」。
+                // 既定であり推奨でもある解像度のみを先頭に置く。
                 (mode: TexSlimComponent.CompressionMode.ResolutionOnly,
                  label: L.T("解像度のみ", "Resolution only"),
-                 tip:   L.T("Crunch をかけずに解像度だけ下げます。特殊なシェーダー向け",
-                            "Only shrinks the resolution, no Crunch. For unusual shaders")),
+                 tip:   L.T("解像度だけ下げます。テクスチャメモリが減るのはこの部分です",
+                            "Only shrinks the resolution. This is what reduces texture memory")),
+                (mode: TexSlimComponent.CompressionMode.Both,
+                 label: L.T("解像度＋Crunch", "Resolution + Crunch"),
+                 tip:   L.T("さらに Crunch もかけます。ダウンロードサイズがもう少しだけ減ります",
+                            "Applies Crunch on top. Download size drops a little further")),
+                (mode: TexSlimComponent.CompressionMode.CrunchOnly,
+                 label: L.T("Crunchのみ", "Crunch only"),
+                 tip:   L.T("解像度を保ったまま保存形式だけ変えます。テクスチャメモリは減りません",
+                            "Keeps the resolution, changes only the format. Texture memory stays the same")),
             };
 
             foreach (var m in modes)

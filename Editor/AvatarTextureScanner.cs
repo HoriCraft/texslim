@@ -435,6 +435,7 @@ namespace HoriCraft.TexSlim.Editor
             bool isCrunched = imp != null && imp.crunchedCompression;
             bool isNormal   = imp != null && imp.textureType == TextureImporterType.NormalMap;
             bool hasAlpha   = imp != null && DoesSourceHaveAlpha(imp);
+            bool isUncomp   = imp != null && imp.textureCompression == TextureImporterCompression.Uncompressed;
             string format   = "Unknown";
 
             // 実テクスチャから解像度・フォーマット・VRAM量を取得
@@ -452,7 +453,7 @@ namespace HoriCraft.TexSlim.Editor
             if (fileInfo.Exists) fileBytes = fileInfo.Length;
 
             bool hasMips = tex != null && tex.mipmapCount > 1;
-            return new TextureAssetInfo(width, height, maxSize, format, isCrunched, isNormal, hasAlpha, hasMips, fileBytes, runtimeBytes, storageBytes);
+            return new TextureAssetInfo(width, height, maxSize, format, isCrunched, isNormal, hasAlpha, hasMips, isUncomp, fileBytes, runtimeBytes, storageBytes);
         }
 
         private static bool DoesSourceHaveAlpha(TextureImporter importer)
@@ -555,6 +556,16 @@ namespace HoriCraft.TexSlim.Editor
         /// </summary>
         public long TotalVramBytes        { get; private set; }
         public long TotalStorageBytes     { get; private set; }
+
+        /// <summary>
+        /// 圧縮形式が None（非圧縮）のまま残っていて、修正できるテクスチャの数。
+        /// 保護・除外中のものは含まない（ユーザーが触るなと言ったものは触らない）。
+        /// </summary>
+        public int  UncompressedFixableCount  { get; private set; }
+        /// <summary>非圧縮のうち、保護・除外などで修正対象から外れている数。</summary>
+        public int  UncompressedSkippedCount  { get; private set; }
+        /// <summary>非圧縮を Compressed に直したときに減る VRAM の推定合計。</summary>
+        public long UncompressedFixSavings    { get; private set; }
         /// <summary>圧縮対象テクスチャの元ディスクサイズ合計（バイト）</summary>
         public long OriginalTotalBytes    { get; private set; }
 
@@ -643,6 +654,9 @@ namespace HoriCraft.TexSlim.Editor
             IncludedStorageBytes   = 0L;
             TotalVramBytes         = 0L;
             TotalStorageBytes      = 0L;
+            UncompressedFixableCount = 0;
+            UncompressedSkippedCount = 0;
+            UncompressedFixSavings   = 0L;
 
             List<AvatarTextureNode> allNodes = Objects
                 .SelectMany(o => o.Materials)
@@ -681,10 +695,33 @@ namespace HoriCraft.TexSlim.Editor
                 if (!primary.IsProjectAsset || !primary.IsTexture2D) SkippedAssetCount++;
                 else if (primary.ProtectedByName)                    ProtectedTextureCount++;
 
+                // 非圧縮フォーマットの集計。解像度をいくら下げても、形式が None のままだと
+                // BC/DXT の約4倍の VRAM を使い続けるため、別枠で数えて診断に出す。
+                bool anyIncluded = group.Any(node => node.Include);
+                if (primary.IsProjectAsset && primary.IsTexture2D
+                    && primary.OriginalInfo != null && primary.OriginalInfo.IsUncompressedFormat)
+                {
+                    if (anyIncluded)
+                    {
+                        UncompressedFixableCount++;
+                        // 同じ解像度のままブロック圧縮（DXT1/DXT5）へ変えた場合の差分。
+                        long fixedBytes = TextureSizeUtil.EstimateCrunchedVramBytes(
+                            primary.OriginalInfo.Width, primary.OriginalInfo.Height,
+                            primary.OriginalInfo.Format, primary.OriginalInfo.HasAlpha,
+                            primary.OriginalInfo.HasMipmaps);
+                        UncompressedFixSavings +=
+                            System.Math.Max(0L, primary.OriginalInfo.RuntimeBytes - fixedBytes);
+                    }
+                    else
+                    {
+                        UncompressedSkippedCount++;
+                    }
+                }
+
                 // 圧縮処理は Where(Include).GroupBy(Texture) なので、
                 // 1箇所でも Include ならそのテクスチャは圧縮される。集計もそれに合わせる
                 //（代表ノードだけを見ると、親が除外された行が代表になったときに数が食い違う）。
-                if (!group.Any(node => node.Include)) continue;
+                if (!anyIncluded) continue;
 
                 IncludedTextureCount++;
                 if (primary.OriginalInfo == null) continue;
@@ -697,10 +734,35 @@ namespace HoriCraft.TexSlim.Editor
         }
 
         /// <summary>
+        /// 修正対象になる非圧縮テクスチャの代表ノードを集める。
+        /// 判定基準は RefreshSummary の集計（UncompressedFixableCount）と同じにすること。
+        /// </summary>
+        public List<AvatarTextureNode> CollectUncompressedFixable()
+        {
+            List<AvatarTextureNode> result = new List<AvatarTextureNode>();
+            IEnumerable<AvatarTextureNode> allNodes = Objects
+                .SelectMany(o => o.Materials)
+                .SelectMany(m => m.Textures);
+
+            foreach (IGrouping<Texture, AvatarTextureNode> group in allNodes.GroupBy(t => t.Texture))
+            {
+                AvatarTextureNode primary = group.First();
+                if (primary.IsProjectAsset && primary.IsTexture2D
+                    && primary.OriginalInfo != null && primary.OriginalInfo.IsUncompressedFormat
+                    && group.Any(node => node.Include))
+                {
+                    result.Add(primary);
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// 現在の設定でこのテクスチャを圧縮したときの VRAM 推定値。
         /// Crunch は GPU 上で展開されるため VRAM を減らさない。減らせるのは解像度だけ。
+        /// 詳細タブの行表示（圧縮後の MB 併記）からも使う。
         /// </summary>
-        private long EstimateCompressedVram(AvatarTextureNode node)
+        internal long EstimateCompressedVram(AvatarTextureNode node)
         {
             TextureAssetInfo info = node.OriginalInfo;
             if (info == null || Component == null) return 0L;
@@ -814,6 +876,7 @@ namespace HoriCraft.TexSlim.Editor
         public TextureAssetInfo(
             int width, int height, int maxSize, string format,
             bool isCrunched, bool isNormalMap, bool hasAlpha, bool hasMipmaps,
+            bool isUncompressedFormat,
             long fileBytes, long runtimeBytes, long storageBytes)
         {
             Width        = width;
@@ -824,6 +887,7 @@ namespace HoriCraft.TexSlim.Editor
             IsNormalMap  = isNormalMap;
             HasAlpha     = hasAlpha;
             HasMipmaps   = hasMipmaps;
+            IsUncompressedFormat = isUncompressedFormat;
             FileBytes    = fileBytes;
             RuntimeBytes = runtimeBytes;
             StorageBytes = storageBytes;
@@ -840,6 +904,11 @@ namespace HoriCraft.TexSlim.Editor
         public bool   HasAlpha     { get; }
         /// <summary>ミップマップを持つか。VRAM 推定で 4/3 を掛けるかの判定に使う。</summary>
         public bool   HasMipmaps   { get; }
+        /// <summary>
+        /// インポート設定の圧縮形式が None（非圧縮）か。
+        /// RGBA32 のままだと BC/DXT の約4倍の VRAM を使うため、診断で警告する。
+        /// </summary>
+        public bool   IsUncompressedFormat { get; }
         /// <summary>ディスク上のソースファイルサイズ。インポート設定を変えても変化しない点に注意。</summary>
         public long   FileBytes    { get; }
         /// <summary>実行時（VRAM）の使用量。インポート設定の効果はこちらに現れる。</summary>

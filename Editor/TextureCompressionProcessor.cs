@@ -152,6 +152,70 @@ namespace HoriCraft.TexSlim.Editor
         }
 
         /// <summary>
+        /// 非圧縮フォーマット（圧縮形式が None）のテクスチャを Compressed に直す。
+        /// 解像度・Crunch・品質には一切触れない。
+        /// 変更前の設定は台帳に控えるので、通常の復元でそのまま元に戻せる。
+        /// </summary>
+        public static CompressionResult FixUncompressedFormats(
+            TexSlimComponent component, List<AvatarTextureNode> targets)
+        {
+            if (component == null || targets == null || targets.Count == 0)
+                return CompressionResult.Empty;
+
+            List<string> warnings = new List<string>();
+            long beforeVram = 0, afterVram = 0, beforeStorage = 0, afterStorage = 0;
+            int done = 0;
+
+            try
+            {
+                for (int i = 0; i < targets.Count; i++)
+                {
+                    AvatarTextureNode node = targets[i];
+                    if (node?.Texture == null || node.OriginalInfo == null) continue;
+
+                    if (DisplayCancelableProgress(
+                            L.T("非圧縮フォーマットを修正中", "Fixing uncompressed formats"),
+                            node.Texture.name, i, targets.Count))
+                        break;
+
+                    TextureImporter importer = AssetImporter.GetAtPath(node.AssetPath) as TextureImporter;
+                    if (importer == null)
+                    {
+                        warnings.Add(L.F("{0}: TextureImporter を取得できませんでした。",
+                                         "{0}: could not get its TextureImporter.", TexName(node.Texture)));
+                        continue;
+                    }
+
+                    string guid = AssetDatabase.AssetPathToGUID(node.AssetPath);
+                    ImportSettingsRegistry.StoreIfAbsent(
+                        guid,
+                        importer.maxTextureSize,
+                        (int)importer.textureCompression,
+                        importer.crunchedCompression,
+                        importer.compressionQuality);
+
+                    importer.textureCompression = TextureImporterCompression.Compressed;
+                    importer.SaveAndReimport();
+
+                    beforeVram    += node.OriginalInfo.RuntimeBytes;
+                    beforeStorage += node.OriginalInfo.StorageBytes;
+                    Reload(node.AssetPath, out long vram, out long storage);
+                    afterVram    += vram;
+                    afterStorage += storage;
+                    done++;
+                }
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+            }
+
+            FinalizeCompression(component, done > 0);
+            return new CompressionResult(
+                done, beforeVram, afterVram, beforeStorage, afterStorage, false, warnings);
+        }
+
+        /// <summary>
         /// 1テクスチャの インポート設定を圧縮向きに書き換える。
         /// 圧縮前の設定は台帳に控える（初回のみ・以後は上書きしない）。
         /// </summary>
