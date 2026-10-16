@@ -193,7 +193,8 @@ namespace HoriCraft.TexSlim.Editor
                         L.F("保護・除外中のテクスチャに、圧縮形式が None のものが {0} 枚あります。\n"
                             + "これらは指定どおり、そのままにしています。",
                             "{0} protected/excluded textures still use compression format None.\n"
-                            + "They are left alone, as you asked."),
+                            + "They are left alone, as you asked.",
+                            scan.UncompressedSkippedCount),
                         MessageType.None);
                 }
                 return;
