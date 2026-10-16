@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.2 — 保護・除外中の非圧縮テクスチャがある場合の表示エラーを修正
+
+### 修正
+
+- 修正対象の非圧縮テクスチャがなく、保護・除外中に非圧縮テクスチャが残っている場合、かんたんタブの描画が途中で止まり、ボタンが表示されない・操作できなくなる不具合を修正しました。
+- 件数の案内文に必要な値を渡すよう修正しました。圧縮・復元・保護の動作に変更はありません。
+
+### Fixed
+
+- Fixed an exception that interrupted the Easy tab and made its controls unavailable when uncompressed textures remained only among protected or excluded textures.
+- Corrected the texture count passed to the notice. Compression, restoration, and protection behavior are unchanged.
+
+---
+
 ## 1.1.1 — UI が上下に揺れる不具合を修正
 
 ### 修正
